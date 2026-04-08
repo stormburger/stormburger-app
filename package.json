@@ -1,0 +1,17 @@
+{
+  "name": "stormburger",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "server"
+  ],
+  "scripts": {
+    "server:dev": "cd server && npm run start:dev",
+    "admin:dev": "cd apps/admin && npm run dev",
+    "mobile:start": "cd apps/mobile && npm start"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
