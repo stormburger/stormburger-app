@@ -3,6 +3,7 @@ import {
   IsOptional,
   IsBoolean,
   IsDateString,
+  IsUUID,
   MaxLength,
 } from 'class-validator';
 
@@ -23,4 +24,8 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsString()
   push_token?: string;
+
+  @IsOptional()
+  @IsUUID()
+  preferred_store_id?: string;
 }

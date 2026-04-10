@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../../config/supabase.config';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 
 @Injectable()
@@ -15,6 +16,7 @@ export class OrdersService {
   constructor(
     private readonly supabase: SupabaseService,
     private readonly config: ConfigService,
+    private readonly notifications: NotificationsService,
   ) {
     this.taxRate = parseFloat(config.get('CA_TAX_RATE', '0.0975'));
   }
@@ -259,6 +261,20 @@ export class OrdersService {
       .single();
 
     if (error) throw error;
+
+    // Fire notification (non-blocking)
+    if (data) {
+      const userId = data.user_id;
+      const orderNum = data.order_number;
+      try {
+        if (status === 'confirmed') await this.notifications.sendOrderConfirmed(userId, orderNum);
+        if (status === 'preparing') await this.notifications.sendOrderPreparing(userId, orderNum);
+        if (status === 'ready') await this.notifications.sendOrderReady(userId, orderNum, data.store_name || 'StormBurger');
+      } catch (e) {
+        console.error('[Orders] Notification failed:', e);
+      }
+    }
+
     return data;
   }
 

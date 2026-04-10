@@ -178,6 +178,7 @@ export class AuthService {
       email: userResult.data.email,
       phone: userResult.data.phone,
       role: userResult.data.role,
+      preferred_store_id: userResult.data.preferred_store_id || null,
       profile: profileResult.data
         ? {
             display_name: profileResult.data.display_name,
@@ -209,23 +210,29 @@ export class AuthService {
   async updateProfile(userId: string, dto: UpdateProfileDto) {
     const admin = this.supabase.getAdminClient();
 
+    // Preferred store goes on the users table, not user_profiles
+    if (dto.preferred_store_id !== undefined) {
+      await admin
+        .from('users')
+        .update({ preferred_store_id: dto.preferred_store_id })
+        .eq('id', userId);
+    }
+
     const updateData: Record<string, any> = {};
     if (dto.display_name !== undefined) updateData.display_name = dto.display_name;
     if (dto.date_of_birth !== undefined) updateData.date_of_birth = dto.date_of_birth;
     if (dto.marketing_opt_in !== undefined) updateData.marketing_opt_in = dto.marketing_opt_in;
     if (dto.push_token !== undefined) updateData.push_token = dto.push_token;
 
-    if (Object.keys(updateData).length === 0) {
-      return this.getMe(userId);
-    }
+    if (Object.keys(updateData).length > 0) {
+      const { error } = await admin
+        .from('user_profiles')
+        .update(updateData)
+        .eq('user_id', userId);
 
-    const { error } = await admin
-      .from('user_profiles')
-      .update(updateData)
-      .eq('user_id', userId);
-
-    if (error) {
-      throw new InternalServerErrorException(`Profile update failed: ${error.message}`);
+      if (error) {
+        throw new InternalServerErrorException(`Profile update failed: ${error.message}`);
+      }
     }
 
     return this.getMe(userId);
