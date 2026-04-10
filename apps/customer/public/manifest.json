@@ -1,0 +1,26 @@
+{
+  "name": "StormBurger",
+  "short_name": "StormBurger",
+  "description": "Order from StormBurger — Hot. Fast. Legendary.",
+  "start_url": "/stores",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F7F8FA",
+  "theme_color": "#1F3F99",
+  "icons": [
+    {
+      "src": "/StormLogo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/StormLogo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["food", "shopping"],
+  "screenshots": []
+}

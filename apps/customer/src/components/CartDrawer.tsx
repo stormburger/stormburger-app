@@ -85,7 +85,7 @@ const s: Record<string, React.CSSProperties> = {
   qtyBtn: { background: '#fff', border: '1px solid var(--border)', color: 'var(--text)', width: 30, height: 30, borderRadius: 8, cursor: 'pointer', fontSize: 17, display: 'flex', alignItems: 'center', justifyContent: 'center' },
   qtyVal: { fontSize: 14, fontWeight: 800, minWidth: 22, textAlign: 'center' },
   removeBtn: { marginLeft: 'auto', background: 'transparent', border: 'none', color: 'var(--red)', cursor: 'pointer', fontSize: 12, fontWeight: 600 },
-  footer: { padding: '16px 18px 22px', borderTop: '1px solid var(--border)' },
+  footer: { padding: '16px 18px', paddingBottom: 'calc(22px + env(safe-area-inset-bottom, 0px))', borderTop: '1px solid var(--border)' },
   subtotalRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 },
   subtotalLabel: { fontSize: 14, fontWeight: 700, color: 'var(--text)' },
   subtotalAmt: { fontSize: 18, fontWeight: 900, color: 'var(--text)', letterSpacing: '-0.5px' },
