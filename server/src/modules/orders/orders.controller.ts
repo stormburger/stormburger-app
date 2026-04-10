@@ -43,6 +43,15 @@ export class OrdersController {
     return this.ordersService.getOrder(id, user.id);
   }
 
+  @Post(':id/reorder')
+  reorder(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body('store_id') storeId: string,
+  ) {
+    return this.ordersService.reorder(id, user.id, storeId);
+  }
+
   @Patch(':id/status')
   @UseGuards(RolesGuard)
   @Roles('staff')

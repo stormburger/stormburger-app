@@ -9,6 +9,7 @@ import { CartModule } from './modules/cart/cart.module';
 import { CheckoutModule } from './modules/checkout/checkout.module';
 import { FavoritesModule } from './modules/favorites/favorites.module';
 import { HealthModule } from './modules/health/health.module';
+import { LoyaltyModule } from './modules/loyalty/loyalty.module';
 import { LocationsModule } from './modules/locations/locations.module';
 import { MenuModule } from './modules/menu/menu.module';
 import { OrdersModule } from './modules/orders/orders.module';
@@ -28,6 +29,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
     FavoritesModule,
     HealthModule,
     LocationsModule,
+    LoyaltyModule,
     MenuModule,
     OrdersModule,
     PaymentsModule,

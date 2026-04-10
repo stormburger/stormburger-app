@@ -14,4 +14,9 @@ export class CheckoutDto {
   @IsNumber()
   @Min(0)
   tip_amount?: number; // cents
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  loyalty_points_to_redeem?: number;
 }

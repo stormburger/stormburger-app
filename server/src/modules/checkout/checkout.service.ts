@@ -6,6 +6,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../../config/supabase.config';
 import { CartValidatorService, ValidatedItem } from '../cart/cart-validator.service';
+import { LoyaltyService } from '../loyalty/loyalty.service';
 import { CheckoutDto } from './dto/checkout.dto';
 
 const Stripe = require('stripe');
@@ -17,6 +18,7 @@ export class CheckoutService {
   constructor(
     private readonly supabase: SupabaseService,
     private readonly cartValidator: CartValidatorService,
+    private readonly loyalty: LoyaltyService,
     private readonly config: ConfigService,
   ) {
     this.stripe = new Stripe(config.getOrThrow('STRIPE_SECRET_KEY'));
@@ -33,7 +35,7 @@ export class CheckoutService {
       storeId,
     );
 
-    const taxRate = parseFloat(store.tax_rate);
+    const taxRate = parseFloat(this.config.get('CA_TAX_RATE', '0.0975'));
     const taxAmount = Math.round(subtotal * taxRate);
     const total = subtotal + taxAmount + tipAmount;
 
@@ -41,8 +43,8 @@ export class CheckoutService {
       store: {
         id: store.id,
         name: store.name,
-        address: `${store.address_line1}, ${store.city}, ${store.state} ${store.zip}`,
-        estimated_pickup_at: this.estimatePickup(store.estimated_prep_minutes),
+        address: `${store.address}, ${store.city}, ${store.state} ${store.zip}`,
+        estimated_pickup_at: this.estimatePickup(store.estimated_prep_minutes ?? 15),
       },
       items: validatedItems.map((vi) => ({
         name: vi.menuItem.name,
@@ -127,14 +129,26 @@ export class CheckoutService {
     );
 
     // --- 5. Calculate totals ---
-    const taxRate = parseFloat(store.tax_rate);
+    const taxRate = parseFloat(this.config.get('CA_TAX_RATE', '0.0975'));
     const taxAmount = Math.round(subtotal * taxRate);
-    const total = subtotal + taxAmount + tipAmount;
+
+    // --- 5b. Loyalty redemption ---
+    let loyaltyDiscount = 0;
+    let pointsRedeemed = 0;
+    if (dto.loyalty_points_to_redeem && dto.loyalty_points_to_redeem > 0) {
+      loyaltyDiscount = await this.loyalty.redeemPoints(
+        userId,
+        dto.loyalty_points_to_redeem,
+      );
+      pointsRedeemed = dto.loyalty_points_to_redeem;
+    }
+
+    const total = Math.max(0, subtotal + taxAmount + tipAmount - loyaltyDiscount);
 
     // --- 6. Generate order number ---
     const orderNumber = await this.generateOrderNumber();
 
-    const estimatedPickup = this.estimatePickup(store.estimated_prep_minutes);
+    const estimatedPickup = this.estimatePickup(store.estimated_prep_minutes ?? 15);
 
     // --- 7. Create order ---
     const { data: order, error: orderError } = await admin
@@ -145,11 +159,12 @@ export class CheckoutService {
         store_id: storeId,
         status: 'pending',
         subtotal,
-        discount_amount: 0,
+        discount_amount: loyaltyDiscount,
         tax_amount: taxAmount,
         tip_amount: tipAmount,
         total,
         tax_rate: taxRate,
+        loyalty_points_redeemed: pointsRedeemed,
         estimated_pickup_at: estimatedPickup,
         special_instructions: dto.special_instructions || null,
         idempotency_key: dto.idempotency_key,

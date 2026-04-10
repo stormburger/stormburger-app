@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../../config/supabase.config';
+import { LoyaltyService } from '../loyalty/loyalty.service';
 const Stripe = require('stripe');
 
 @Injectable()
@@ -10,6 +11,7 @@ export class PaymentsService {
   constructor(
     private readonly config: ConfigService,
     private readonly supabase: SupabaseService,
+    private readonly loyalty: LoyaltyService,
   ) {
     this.stripe = new Stripe(config.getOrThrow('STRIPE_SECRET_KEY'));
   }
@@ -81,17 +83,24 @@ export class PaymentsService {
 
   /** Handle Stripe webhook events */
   async handleWebhook(body: Buffer, signature: string) {
-    const webhookSecret = this.config.get('STRIPE_WEBHOOK_SECRET');
+    const secret = this.config.get<string>('STRIPE_WEBHOOK_SECRET');
+    const isProd = this.config.get<string>('NODE_ENV') === 'production';
+
+    if (isProd && !secret) {
+      throw new Error('STRIPE_WEBHOOK_SECRET is required in production');
+    }
+
+    if (!secret) {
+      console.warn('[Payments] Stripe webhook secret not set — skipping signature verification (DEV ONLY)');
+      return { received: true, verified: false };
+    }
+
     let event: any;
 
     try {
-      event = this.stripe.webhooks.constructEvent(
-        body,
-        signature,
-        webhookSecret || '',
-      );
+      event = this.stripe.webhooks.constructEvent(body, signature, secret);
     } catch (err: any) {
-      throw new BadRequestException(`Webhook error: ${err.message}`);
+      throw new BadRequestException(`Webhook signature verification failed: ${err.message}`);
     }
 
     const admin = this.supabase.getAdminClient();
@@ -104,14 +113,31 @@ export class PaymentsService {
           .update({ status: 'captured' })
           .eq('stripe_payment_intent_id', pi.id);
 
-        // Confirm the order
+        // Confirm the order and award loyalty points
         const orderId = pi.metadata.order_id;
+        const userId = pi.metadata.user_id;
         if (orderId) {
           await admin
             .from('orders')
             .update({ status: 'confirmed' })
             .eq('id', orderId)
             .eq('status', 'pending');
+
+          // Award loyalty points (1 point per dollar)
+          if (userId) {
+            try {
+              const result = await this.loyalty.awardPoints(userId, orderId, pi.amount);
+              if (result) {
+                await admin
+                  .from('orders')
+                  .update({ loyalty_points_earned: result.points_awarded })
+                  .eq('id', orderId);
+              }
+            } catch (e) {
+              // Points accrual is non-blocking — log and continue
+              console.error('[Payments] Failed to award loyalty points:', e);
+            }
+          }
         }
         break;
       }

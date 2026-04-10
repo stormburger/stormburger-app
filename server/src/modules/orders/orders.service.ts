@@ -262,6 +262,67 @@ export class OrdersService {
     return data;
   }
 
+  /**
+   * Reorder — takes a past order, checks item availability,
+   * and populates the user's cart with the same items.
+   */
+  async reorder(orderId: string, userId: string, storeId: string) {
+    const admin = this.supabase.getAdminClient();
+
+    // Get the original order with items and modifiers
+    const { data: order } = await admin
+      .from('orders')
+      .select(`
+        *,
+        order_items(*, order_item_modifiers(*))
+      `)
+      .eq('id', orderId)
+      .eq('user_id', userId)
+      .single();
+
+    if (!order) throw new NotFoundException('Order not found');
+
+    // Check each item's availability at the target store
+    const available: any[] = [];
+    const unavailable: string[] = [];
+
+    for (const item of order.order_items || []) {
+      const { data: menuItem } = await admin
+        .from('menu_items')
+        .select('id, name')
+        .eq('id', item.menu_item_id)
+        .eq('is_active', true)
+        .single();
+
+      if (!menuItem) {
+        unavailable.push(item.menu_item_name);
+        continue;
+      }
+
+      const { data: storeAvail } = await admin
+        .from('location_menu_items')
+        .select('id')
+        .eq('menu_item_id', item.menu_item_id)
+        .eq('location_id', storeId)
+        .eq('is_available', true)
+        .single();
+
+      if (!storeAvail) {
+        unavailable.push(item.menu_item_name);
+        continue;
+      }
+
+      available.push({
+        menu_item_id: item.menu_item_id,
+        quantity: item.quantity,
+        modifier_ids: (item.order_item_modifiers || []).map((m: any) => m.modifier_id),
+        special_instructions: item.special_instructions,
+      });
+    }
+
+    return { available, unavailable };
+  }
+
   private async generateOrderNumber(): Promise<string> {
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const { count } = await this.supabase
