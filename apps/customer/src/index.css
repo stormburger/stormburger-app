@@ -1,0 +1,53 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
+:root {
+  --bg: #F7F8FA;
+  --bg-white: #FFFFFF;
+  --text: #1A202C;
+  --text-muted: #718096;
+  --text-dim: #A0AEC0;
+  --border: #E2E8F0;
+  --border-strong: #CBD5E0;
+  --primary: #1F3F99;
+  --primary-hover: #1A357F;
+  --primary-dark: #1F469C;
+  --red: #E53E3E;
+  --red-hover: #CC3535;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root { min-height: 100vh; }
+button { font-family: inherit; }
+input, textarea, select { font-family: inherit; color: var(--text); }
+
+/* Full-page watermark */
+body::before {
+  content: '';
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 520px;
+  height: 520px;
+  background: url('/StormLogo.png') center / contain no-repeat;
+  opacity: 0.08;
+  pointer-events: none;
+  z-index: 0;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #CBD5E0; border-radius: 3px; }

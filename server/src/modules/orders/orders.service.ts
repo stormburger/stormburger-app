@@ -16,7 +16,7 @@ export class OrdersService {
   constructor(
     private readonly supabase: SupabaseService,
     private readonly config: ConfigService,
-    private readonly notifications: NotificationsService,
+    private readonly notificationsService: NotificationsService,
   ) {
     this.taxRate = parseFloat(config.get('CA_TAX_RATE', '0.0975'));
   }
@@ -239,7 +239,7 @@ export class OrdersService {
     const { data: order } = await this.supabase
       .getAdminClient()
       .from('orders')
-      .select('status')
+      .select('status, user_id, order_number')
       .eq('id', orderId)
       .single();
 
@@ -262,81 +262,12 @@ export class OrdersService {
 
     if (error) throw error;
 
-    // Fire notification (non-blocking)
-    if (data) {
-      const userId = data.user_id;
-      const orderNum = data.order_number;
-      try {
-        if (status === 'confirmed') await this.notifications.sendOrderConfirmed(userId, orderNum);
-        if (status === 'preparing') await this.notifications.sendOrderPreparing(userId, orderNum);
-        if (status === 'ready') await this.notifications.sendOrderReady(userId, orderNum, data.store_name || 'StormBurger');
-      } catch (e) {
-        console.error('[Orders] Notification failed:', e);
-      }
-    }
+    // Fire-and-forget push notification — does not block the response
+    this.notificationsService
+      .dispatchOrderNotification(order.user_id, order.order_number, status)
+      .catch(() => null);
 
     return data;
-  }
-
-  /**
-   * Reorder — takes a past order, checks item availability,
-   * and populates the user's cart with the same items.
-   */
-  async reorder(orderId: string, userId: string, storeId: string) {
-    const admin = this.supabase.getAdminClient();
-
-    // Get the original order with items and modifiers
-    const { data: order } = await admin
-      .from('orders')
-      .select(`
-        *,
-        order_items(*, order_item_modifiers(*))
-      `)
-      .eq('id', orderId)
-      .eq('user_id', userId)
-      .single();
-
-    if (!order) throw new NotFoundException('Order not found');
-
-    // Check each item's availability at the target store
-    const available: any[] = [];
-    const unavailable: string[] = [];
-
-    for (const item of order.order_items || []) {
-      const { data: menuItem } = await admin
-        .from('menu_items')
-        .select('id, name')
-        .eq('id', item.menu_item_id)
-        .eq('is_active', true)
-        .single();
-
-      if (!menuItem) {
-        unavailable.push(item.menu_item_name);
-        continue;
-      }
-
-      const { data: storeAvail } = await admin
-        .from('location_menu_items')
-        .select('id')
-        .eq('menu_item_id', item.menu_item_id)
-        .eq('location_id', storeId)
-        .eq('is_available', true)
-        .single();
-
-      if (!storeAvail) {
-        unavailable.push(item.menu_item_name);
-        continue;
-      }
-
-      available.push({
-        menu_item_id: item.menu_item_id,
-        quantity: item.quantity,
-        modifier_ids: (item.order_item_modifiers || []).map((m: any) => m.modifier_id),
-        special_instructions: item.special_instructions,
-      });
-    }
-
-    return { available, unavailable };
   }
 
   private async generateOrderNumber(): Promise<string> {

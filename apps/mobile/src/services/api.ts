@@ -82,6 +82,28 @@ class ApiClient {
       publishable_key: string;
     }>(`/payments/intent/${orderId}`, { method: 'POST' });
   }
+
+  // Push notifications — register device token after login
+  registerPushToken(token: string, platform: 'ios' | 'android', deviceId?: string) {
+    return this.request<{ registered: boolean }>('/auth/me', {
+      method: 'PATCH',
+      body: JSON.stringify({ push_token: token, push_platform: platform, push_device_id: deviceId }),
+    });
+  }
+
+  // Notification preferences
+  getNotificationPreferences() {
+    return this.request<{ order_updates: boolean; promotions: boolean; loyalty_updates: boolean }>(
+      '/notifications/preferences',
+    );
+  }
+
+  updateNotificationPreferences(prefs: Partial<{ order_updates: boolean; promotions: boolean; loyalty_updates: boolean }>) {
+    return this.request<{ order_updates: boolean; promotions: boolean; loyalty_updates: boolean }>(
+      '/notifications/preferences',
+      { method: 'PATCH', body: JSON.stringify(prefs) },
+    );
+  }
 }
 
 export const api = new ApiClient();

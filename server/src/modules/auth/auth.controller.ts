@@ -9,6 +9,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { SignupDto } from './dto/signup.dto';
 import { SigninDto } from './dto/signin.dto';
@@ -24,18 +25,21 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('signup')
+  @Throttle({ auth: { limit: 5, ttl: 60000 } })
   @HttpCode(HttpStatus.CREATED)
   signup(@Body() dto: SignupDto) {
     return this.authService.signup(dto);
   }
 
   @Post('signin')
+  @Throttle({ auth: { limit: 10, ttl: 60000 } })
   @HttpCode(HttpStatus.OK)
   signin(@Body() dto: SigninDto) {
     return this.authService.signin(dto);
   }
 
   @Post('refresh')
+  @Throttle({ auth: { limit: 10, ttl: 60000 } })
   @HttpCode(HttpStatus.OK)
   refresh(@Body('refresh_token') refreshToken: string) {
     return this.authService.refresh(refreshToken);

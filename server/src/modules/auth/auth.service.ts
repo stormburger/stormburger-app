@@ -5,6 +5,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { SupabaseService } from '../../config/supabase.config';
 import { SignupDto } from './dto/signup.dto';
 import { SigninDto } from './dto/signin.dto';
@@ -12,6 +13,7 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
   constructor(private readonly supabase: SupabaseService) {}
 
   /**
@@ -56,24 +58,16 @@ export class AuthService {
 
     // 2-4. Create application records using service key (bypasses RLS)
     try {
-      // Users table
+      // Users table — display_name and marketing_opt_in live here (no user_profiles table)
       const { error: userError } = await admin.from('users').insert({
         id: userId,
         email: dto.email,
         phone: dto.phone || null,
         role: 'customer',
+        display_name: dto.display_name,
+        marketing_opt_in: dto.marketing_opt_in ?? false,
       });
       if (userError) throw userError;
-
-      // User profile
-      const { error: profileError } = await admin
-        .from('user_profiles')
-        .insert({
-          user_id: userId,
-          display_name: dto.display_name,
-          marketing_opt_in: dto.marketing_opt_in ?? false,
-        });
-      if (profileError) throw profileError;
 
       // Loyalty account — every customer is auto-enrolled
       const { error: loyaltyError } = await admin
@@ -160,9 +154,8 @@ export class AuthService {
   async getMe(userId: string) {
     const admin = this.supabase.getAdminClient();
 
-    const [userResult, profileResult, loyaltyResult] = await Promise.all([
+    const [userResult, loyaltyResult] = await Promise.all([
       admin.from('users').select('*').eq('id', userId).single(),
-      admin.from('user_profiles').select('*').eq('user_id', userId).single(),
       admin.from('loyalty_accounts').select('*').eq('user_id', userId).single(),
     ]);
 
@@ -178,18 +171,12 @@ export class AuthService {
       email: userResult.data.email,
       phone: userResult.data.phone,
       role: userResult.data.role,
-      preferred_store_id: userResult.data.preferred_store_id || null,
-      profile: profileResult.data
-        ? {
-            display_name: profileResult.data.display_name,
-            avatar_url: profileResult.data.avatar_url,
-            date_of_birth: profileResult.data.date_of_birth,
-            marketing_opt_in: profileResult.data.marketing_opt_in,
-            total_orders: profileResult.data.total_orders,
-            total_spent: profileResult.data.total_spent,
-            last_order_at: profileResult.data.last_order_at,
-          }
-        : null,
+      display_name: userResult.data.display_name ?? null,
+      preferred_store_id: userResult.data.preferred_store_id ?? null,
+      profile: {
+        display_name: userResult.data.display_name ?? null,
+        marketing_opt_in: userResult.data.marketing_opt_in ?? false,
+      },
       loyalty: loyalty
         ? {
             points_balance: loyalty.points_balance,
@@ -210,28 +197,66 @@ export class AuthService {
   async updateProfile(userId: string, dto: UpdateProfileDto) {
     const admin = this.supabase.getAdminClient();
 
-    // Preferred store goes on the users table, not user_profiles
-    if (dto.preferred_store_id !== undefined) {
-      await admin
-        .from('users')
-        .update({ preferred_store_id: dto.preferred_store_id })
-        .eq('id', userId);
-    }
-
     const updateData: Record<string, any> = {};
     if (dto.display_name !== undefined) updateData.display_name = dto.display_name;
-    if (dto.date_of_birth !== undefined) updateData.date_of_birth = dto.date_of_birth;
     if (dto.marketing_opt_in !== undefined) updateData.marketing_opt_in = dto.marketing_opt_in;
-    if (dto.push_token !== undefined) updateData.push_token = dto.push_token;
+    if ((dto as any).preferred_store_id !== undefined) updateData.preferred_store_id = (dto as any).preferred_store_id;
 
+    // Only update users table if there are profile fields to change
     if (Object.keys(updateData).length > 0) {
       const { error } = await admin
-        .from('user_profiles')
+        .from('users')
         .update(updateData)
-        .eq('user_id', userId);
+        .eq('id', userId);
 
       if (error) {
         throw new InternalServerErrorException(`Profile update failed: ${error.message}`);
+      }
+    }
+
+    // Handle push token separately (push_tokens table).
+    if (dto.push_token !== undefined) {
+      this.logger.log(`[push_tokens] registering token for user=${userId} platform=${dto.push_platform ?? 'web'}`);
+
+      // Check if token already exists for this user
+      const { data: existing, error: selectErr } = await admin
+        .from('push_tokens')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('token', dto.push_token)
+        .maybeSingle();
+
+      if (selectErr) {
+        this.logger.error(`[push_tokens] select failed: ${selectErr.message} code=${selectErr.code}`);
+      }
+
+      if (existing) {
+        this.logger.log(`[push_tokens] updating existing row id=${existing.id}`);
+        const { error: updateErr } = await admin.from('push_tokens').update({
+          platform: dto.push_platform ?? 'web',
+          device_id: dto.push_device_id ?? null,
+          is_active: true,
+          updated_at: new Date().toISOString(),
+        }).eq('id', existing.id);
+        if (updateErr) {
+          this.logger.error(`[push_tokens] update failed: ${updateErr.message} code=${updateErr.code}`);
+        } else {
+          this.logger.log(`[push_tokens] update OK`);
+        }
+      } else {
+        this.logger.log(`[push_tokens] inserting new row`);
+        const { error: insertErr, data: insertData } = await admin.from('push_tokens').insert({
+          user_id: userId,
+          token: dto.push_token,
+          platform: dto.push_platform ?? 'web',
+          device_id: dto.push_device_id ?? null,
+          is_active: true,
+        }).select();
+        if (insertErr) {
+          this.logger.error(`[push_tokens] insert failed: ${insertErr.message} code=${insertErr.code}`);
+        } else {
+          this.logger.log(`[push_tokens] insert OK, rows=${JSON.stringify(insertData)}`);
+        }
       }
     }
 
@@ -254,6 +279,7 @@ export class AuthService {
         email: profile.email,
         role: profile.role,
       },
+      display_name: profile.display_name,
       session: {
         access_token: authData.session?.access_token,
         refresh_token: authData.session?.refresh_token,

@@ -2,8 +2,7 @@ import {
   IsString,
   IsOptional,
   IsBoolean,
-  IsDateString,
-  IsUUID,
+  IsIn,
   MaxLength,
 } from 'class-validator';
 
@@ -14,10 +13,6 @@ export class UpdateProfileDto {
   display_name?: string;
 
   @IsOptional()
-  @IsDateString({}, { message: 'Invalid date format. Use YYYY-MM-DD.' })
-  date_of_birth?: string;
-
-  @IsOptional()
   @IsBoolean()
   marketing_opt_in?: boolean;
 
@@ -26,6 +21,15 @@ export class UpdateProfileDto {
   push_token?: string;
 
   @IsOptional()
-  @IsUUID()
+  @IsIn(['ios', 'android', 'web'])
+  push_platform?: 'ios' | 'android' | 'web';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  push_device_id?: string;
+
+  @IsOptional()
+  @IsString()
   preferred_store_id?: string;
 }
